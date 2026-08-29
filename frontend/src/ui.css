@@ -23,10 +23,8 @@
   position: sticky;
   top: 0;
   z-index: 100;
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  background: rgba(2, 6, 23, 0.85);
-  border-bottom: 1px solid var(--glass-border);
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--card-border);
   padding: var(--space-4) var(--space-8);
   animation: slideDown 0.5s ease-out;
 }
@@ -92,9 +90,9 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-full);
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
   font-family: 'Courier New', monospace;
@@ -173,15 +171,15 @@
 }
 
 .btn--ghost {
-  background: var(--glass-bg);
-  color: var(--text-secondary);
-  border: 1px solid var(--glass-border);
+  background: transparent;
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
 }
 
 .btn--ghost:hover {
-  background: rgba(14, 165, 233, 0.1);
+  background: rgba(0, 181, 226, 0.1);
   color: var(--text-primary);
-  border-color: var(--color-primary);
+  border-color: var(--color-primary-light);
 }
 
 .btn--lg {
@@ -280,10 +278,9 @@
 
 .hero__feature {
   padding: var(--space-6);
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
   transition: all var(--transition-base);
   animation: fadeInUp 0.6s ease-out both;
 }
@@ -321,12 +318,12 @@
 }
 
 .stat-card {
-  padding: var(--space-6);
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-lg);
+  padding: var(--space-6) var(--space-8);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
   text-align: center;
+  box-shadow: var(--card-shadow);
   animation: fadeInUp 0.5s ease-out both;
 }
 
@@ -365,23 +362,21 @@
    ══════════════════════════════════════════════════════════════════════ */
 
 .glass-card {
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--glass-shadow);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
   overflow: hidden;
   transition: all var(--transition-base);
 }
 
 .glass-card:hover {
-  border-color: rgba(14, 165, 233, 0.25);
+  border-color: var(--color-primary-dark);
 }
 
 .glass-card__header {
-  padding: var(--space-6) var(--space-6) var(--space-4);
-  border-bottom: 1px solid var(--glass-border);
+  padding: var(--space-6) var(--space-8) var(--space-4);
+  border-bottom: 1px solid var(--card-border);
 }
 
 .glass-card__title {
@@ -420,8 +415,8 @@
 
 .form-group__input {
   padding: var(--space-3) var(--space-4);
-  background: rgba(2, 6, 23, 0.5);
-  border: 1px solid var(--glass-border);
+  background: var(--bg-tertiary);
+  border: 2px solid transparent;
   border-radius: var(--radius-md);
   color: var(--text-primary);
   font-family: var(--font-family);
