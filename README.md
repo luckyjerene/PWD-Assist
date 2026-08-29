@@ -39,23 +39,24 @@ PWD Assist PH demonstrates how Soroban smart contracts can solve these problems:
 ## Key Features
 
 - **📤 On-Chain Disbursement** — Record PWD assistance disbursements via Soroban smart contract
-- **🔒 Agent Authorization** — `require_auth()` ensures only authorized wallets can disburse
+- **🔐 Service Marketplace** — Register as a User or Provider, request services, and complete them on-chain
+- **🔒 Agent Authorization** — `require_auth()` ensures secure role-based operations
 - **🚫 Duplicate Prevention** — Contract rejects double disbursements to the same PWD ID
-- **🔍 Record Lookup** — Query any PWD's disbursement record directly from the contract (free simulation)
+- **🔍 Record Lookup** — Query any PWD's disbursement record directly from the contract
 - **📊 Aggregate Statistics** — Dashboard shows total disbursed and recipients served
 - **🔗 Freighter Integration** — Connect/disconnect wallet via Freighter browser extension
-- **🖥️ Soroban IDE Compatible** — Full Deploy → Preview → Run workflow in Soroban IDE
+- **📈 Analytics** — Google Analytics 4 integration for user tracking
 
 ## Deployed Contract Details
 
 | Field | Value |
 |---|---|
 | **Network** | Stellar Testnet |
-| **Contract ID** | pending — deploy via Soroban IDE Deploy panel |
+| **Contract ID** | `CAT6OEK23KSU3DOGCHJ2YSGX32SG6GBIFFO446GM3YUZJOVEOIP36YQU` |
 | **Contract Crate** | `contracts/pwd_assist` |
-| **MVP Functions** | `disburse`, `get_record`, `get_stats` |
-| **Explorer** | `https://stellar.expert/explorer/testnet/contract/{CONTRACT_ID}` |
-| **Last Deployed** | pending |
+| **MVP Functions** | `disburse`, `register_user`, `request_service`, `complete_service`, etc. |
+| **Explorer** | `https://stellar.expert/explorer/testnet/contract/CAT6OEK23KSU3DOGCHJ2YSGX32SG6GBIFFO446GM3YUZJOVEOIP36YQU` |
+| **Live App** | [pwd-assist-ph.vercel.app](https://pwd-assist-ph.vercel.app) |
 
 ## Future Scope
 
