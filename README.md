@@ -1,142 +1,104 @@
-# PWD Assist PH
+# PWD Assist Protocol
 
-Empowering Persons with Disabilities through transparent, on-chain government assistance.
+**An immutable, cryptographically verifiable cash transfer protocol for Persons with Disabilities (PWDs) powered by Stellar Soroban.**
 
-[🔗 Live App](https://pwd-assist-ph.vercel.app) • [🎬 Demo Video](#) • [🖼️ Pitch Deck](#)
-
-## 🧩 The Problem
-Meet Maria, a 42-year-old wheelchair user in Metro Manila. When the government announces cash assistance for PWDs, she has to navigate inaccessible public transport, wait in long queues for hours, and deal with endless paperwork—only to find out the funds have been inexplicably "depleted" due to ghost beneficiaries or corruption.
-
-```text
-Traditional Government Disbursements:
-╔══════════════════════════════════════╗
-║ ⚠️ High risk of ghost beneficiaries  ║
-║ ⏳ Days of waiting in line           ║
-║ ❌ Inaccessible to severe PWDs       ║
-╚══════════════════════════════════════╝
-```
-
-## ✅ The Solution
-PWD Assist PH eliminates the queues, the paperwork, and the fraud.
-Maria registers her PWD ID once. When disbursements are approved, the funds are sent directly on-chain via the Stellar network.
-
-```text
-DSWD Agent ──→ Soroban Contract ──→ XLM Payout
-      ↑               ↓
-require_auth()  Freighter Wallet
-                (< 5 seconds)
-```
-
-Within seconds, Maria has the funds in her wallet, completely bypassing the bureaucratic red tape.
-
-## 🚀 Why PWD Assist PH is Revolutionary
-
-- 🛰️ **Elimination of Ghost Beneficiaries** — Cryptographic verification and immutable on-chain records ensure funds only go to real, registered PWDs.
-- 📡 **Instant Service Marketplace** — Not just cash. PWDs can request services (like therapy or caretaking) and the contract handles the escrow and payment.
-- 🤖 **Transparent Auditing** — Anyone can query the contract for real-time aggregate statistics. Zero hidden ledgers.
-- 🔐 **Zero-Trust Payouts** — The Soroban smart contract enforces rules (no double disbursements, valid amounts). Humans cannot manipulate the ledger.
-
-## 🏗️ Architecture
-
-```mermaid
-graph TD
-    subgraph Frontend ["Layer 3: React SPA (Vercel)"]
-        Dashboard["User Dashboard"]
-        Freighter["Freighter Wallet"]
-        Analytics["Google Analytics 4"]
-    end
-    
-    subgraph Blockchain ["Layer 1: Blockchain (Stellar)"]
-        Contract["Soroban Smart Contract"]
-        Storage["Instance Storage (Vault, Data)"]
-    end
-    
-    subgraph Actors ["External"]
-        Admin["DSWD Agent"]
-        User["PWD Beneficiary"]
-        Provider["Service Provider"]
-    end
-
-    Admin -->|"disburse()"| Contract
-    User -->|"register_user()"| Contract
-    Provider -->|"register_provider()"| Contract
-    User -->|"request_service()"| Contract
-    Provider -->|"complete_service()"| Contract
-    
-    Contract <--> Storage
-    Dashboard <-->|"RPC Calls"| Contract
-    Dashboard <--> Freighter
-```
-
-## ✨ Features
-- **📤 On-Chain Disbursement** — Record PWD assistance disbursements via Soroban smart contract.
-- **🔐 Service Marketplace** — Register as a User or Provider, request services, and complete them on-chain.
-- **🔒 Agent Authorization** — `require_auth()` ensures secure role-based operations.
-- **🚫 Duplicate Prevention** — Contract rejects double disbursements to the same PWD ID.
-- **🔍 Record Lookup** — Query any PWD's disbursement record directly from the contract (free simulation).
-- **📊 Aggregate Statistics** — Dashboard shows total disbursed and recipients served.
-- **🔗 Freighter Integration** — Connect/disconnect wallet via Freighter browser extension.
-- **📈 Analytics** — Google Analytics 4 integration for user tracking.
-- **📝 User Feedback** — Integrated feedback collection directly on the dashboard.
-
-## 📋 Security & Audits
-Status: APPROVED | Date: August 2026 | Scope: `contracts/pwd_assist`
-
-An automated static analysis and manual security review was conducted. No high or critical severity vulnerabilities were found.
-- `cargo clippy` passes cleanly.
-- `require_auth()` protects all state-mutating functions.
-
-### ✅ Phase 1 — Testnet (Current)
--  Core Soroban contract with disbursement and service marketplace.
--  Vercel-hosted React frontend with Freighter integration.
--  On-chain duplicate prevention and aggregate stats.
-
-### 🎯 Phase 2 — Mainnet Pilot (Q4 2026)
--  Mainnet deployment and integration with LGUs (Local Government Units).
--  XLM-to-PHP off-ramp integration for easy cash-out.
--  Partnerships with local healthcare providers.
-
-### 📡 Testnet Contract
-```text
-CAT6OEK23KSU3DOGCHJ2YSGX32SG6GBIFFO446GM3YUZJOVEOIP36YQU
-```
-[Stellar Expert (Testnet)](https://stellar.expert/explorer/testnet/contract/CAT6OEK23KSU3DOGCHJ2YSGX32SG6GBIFFO446GM3YUZJOVEOIP36YQU)
-
-## 🎥 Demo & Links
-- **Live App**: [pwd-assist-ph.vercel.app](https://pwd-assist-ph.vercel.app)
-- **Demo Video**: [Coming Soon](#)
-
-## 📋 User Feedback & Iteration
-We actively collect feedback via our live portal to prioritize our roadmap.
-📊 [View Feedback Data on Google Analytics](https://pwd-assist-ph.vercel.app)
+[🔗 Live Protocol Endpoint](https://pwd-assist-ph.vercel.app) • [📄 Technical Whitepaper (Draft)](#) • [🔍 Testnet Explorer](https://stellar.expert/explorer/testnet/contract/CAT6OEK23KSU3DOGCHJ2YSGX32SG6GBIFFO446GM3YUZJOVEOIP36YQU)
 
 ---
 
-## 💻 Developer Guide
+## 1. Abstract
+The distribution of government assistance and conditional cash transfers (CCTs) in emerging economies suffers from severe operational inefficiencies. Specifically, the distribution of funds to Persons with Disabilities (PWDs) in the Philippines is plagued by physical accessibility barriers, administrative bottlenecks, and systemic leakage (often manifested as "ghost beneficiaries"). 
 
-### Prerequisites
-- [rustup.rs](https://rustup.rs)
-- [Stellar CLI docs](https://developers.stellar.org/docs/smart-contracts/getting-started/setup)
-- [nodejs.org](https://nodejs.org) (v24.16.0 via `.nvmrc`)
-- [freighter.app](https://freighter.app)
+The **PWD Assist Protocol** proposes a decentralized architectural model using the Stellar network to disburse funds. By enforcing authorization and ledger state mutations strictly on-chain via a Soroban smart contract, the protocol eliminates human intermediation in the final disbursement layer, ensuring that funds reach verified cryptographic identities with zero transit latency.
 
-### Smart Contract
+## 2. Background & Motivation
+Traditional welfare distribution relies on centralized database architectures and manual reconciliation processes. 
+- **Administrative Friction:** Beneficiaries must physically travel to municipal offices, a process inherently exclusionary to individuals with severe mobility impairments.
+- **Data Asymmetry & Leakage:** Without a unified, immutable ledger, overlapping state programs often disburse funds redundantly, while unauthorized agents intercept funds.
+
+The PWD Assist Protocol hypothesizes that replacing fiat-based manual distribution with tokenized assistance bounded by programmatic smart contract logic can reduce administrative overhead by up to 80% while bringing the risk of duplicate disbursement mathematically to zero.
+
+## 3. Protocol Architecture
+
+The system utilizes a lightweight three-tier architecture:
+
+```mermaid
+graph TD
+    subgraph Client ["Client Layer (React/Vite)"]
+        UI["dApp Interface"]
+        Wallet["Wallet Provider (Freighter)"]
+    end
+    
+    subgraph Execution ["Consensus Layer (Stellar Network)"]
+        SC["Soroban Smart Contract (Rust)"]
+        State["Immutable Ledger State"]
+    end
+    
+    subgraph Actors ["Cryptographic Entities"]
+        Gov["Authorizing Agent (Ed25519)"]
+        Bene["Beneficiary (Ed25519)"]
+        Provider["Service Provider (Ed25519)"]
+    end
+
+    Gov -- "disburse(auth_token, amount)" --> SC
+    Bene -- "register_user(metadata)" --> SC
+    Provider -- "register_provider(service_type)" --> SC
+    SC <--> State
+    UI <-->|"RPC (JSON-RPC 2.0)"| SC
+    Wallet -- "Sign Payload" --> SC
+```
+
+### 3.1 Core State Mechanisms
+- **Idempotent Disbursements**: The contract utilizes the beneficiary's unique ID as a persistent key in the contract's storage schema. State transitions are boolean-locked (`has_received = true`), rendering replay attacks and duplicate manual entries impossible.
+- **Service Marketplace Subgraph**: Beyond raw cash transfers, the protocol facilitates a localized service economy. Beneficiaries can lock tokens in escrow, requesting services from registered providers. Upon cryptographic fulfillment, the contract automatically routes the liquidity.
+- **Agent Authorization**: Core mutation functions invoke `require_auth()`, ensuring that the transaction envelope contains a valid cryptographic signature matching the registered DSWD agent's public key.
+
+## 4. Threat Model & Security Considerations
+
+| Threat Vector | Mitigation Strategy |
+|---|---|
+| **Unauthorized Disbursement** | Strict `require_auth()` enforcement. Only the hardcoded or dynamically elected `admin` keypair can trigger the `disburse` invocation. |
+| **Double Spend / Sybil Claims** | The contract maps the `recipient_id` (representing the national PWD ID) to a boolean flag in the persistent state. Subsequent calls fail with an `AlreadyDisbursed` exception. |
+| **Data Tampering** | All historical disbursements and state variables are hashed and committed to the Stellar blockchain consensus, rendering post-facto ledger manipulation computationally infeasible. |
+| **State Expiration** | Implemented Soroban's `TTL_THRESHOLD` and `TTL_EXTEND` functionality to prevent ledger archival of active beneficiary records. |
+
+*Status: Automated static analysis completed using `cargo clippy`. Manual source code review indicates no critical vulnerabilities. Full audit pending Phase 2.*
+
+## 5. Implementation & Deployment
+
+The contract is written in Rust, leveraging the `soroban-sdk`. The frontend is a React Single Page Application (SPA) utilizing `@stellar/stellar-sdk` for RPC communication.
+
+### 5.1 Testnet Infrastructure
+- **Network**: Stellar Testnet
+- **Contract ID**: `CAT6OEK23KSU3DOGCHJ2YSGX32SG6GBIFFO446GM3YUZJOVEOIP36YQU`
+- **Telemetry**: Integrated with Google Analytics 4 (GA4) for behavioral tracking of the dApp interface.
+
+### 5.2 Local Environment Setup
+Strict environment determinism is enforced via `.nvmrc` (Node v24.16.0).
+
 ```bash
+# 1. Compile Smart Contract
 cd contracts/pwd_assist
 stellar contract build
 cargo test
-```
 
-### Frontend
-```bash
+# 2. Launch Client Interface
 cd frontend
 npm install
 npm run dev
 ```
 
-### Simulation & Audit Log
-To generate a testnet audit log (10+ users) for validation:
+### 5.3 Simulation & Audit Logs
+A deterministic test suite for simulating multiple independent actors (Gov, Providers, PWDs) is provided.
 ```bash
 node scripts/simulate_users.js
 ```
-*Audit log is saved to `simulation_audit.tsv`.*
+*Artifact outputs are stored in `simulation_audit.tsv`.*
+
+## 6. Future Research & Work (Phase 2)
+1. **Zero-Knowledge Identity (zk-DID)**: Integrating ZK-proofs to verify a beneficiary's national ID status without exposing personally identifiable information (PII) on the public ledger.
+2. **Oracle Integration**: Connecting to off-chain municipal death registries via decentralized oracles to automatically prune invalid beneficiaries.
+3. **Yield-Bearing Escrow**: Depositing idle government assistance funds into yield-generating Stellar DeFi protocols (e.g., automated market makers) to generate auxiliary income for the welfare program before disbursement.
+
+---
+*Developed for the Stellar Community Fund / Philippine Hackathon deployment. MIT Licensed.*
