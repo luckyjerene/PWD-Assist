@@ -16,11 +16,15 @@ import { initAnalytics } from "./analytics";
 import "./index.css";
 import "./ui.css";
 
+import { ErrorBoundary } from "./ErrorBoundary";
+
 // Initialize Google Analytics 4
 initAnalytics();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>
 );
