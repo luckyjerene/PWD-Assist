@@ -21,6 +21,14 @@ import { useWallet, signTransactionXdr } from "./wallet";
 import { useContractId } from "./contractRuntime";
 import { simulate, invokeWrite, formatRpcError, DEPLOY_HINT } from "./sorobanClient";
 import { logAction, ensureConnected, applyContractError } from "./previewActions";
+import {
+  trackWalletConnected,
+  trackWalletDisconnected,
+  trackDisbursementSubmitted,
+  trackDisbursementSuccess,
+  trackDisbursementFailed,
+  trackRecordLookup,
+} from "./analytics";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -153,6 +161,7 @@ export default function App() {
       );
 
       logAction("Disburse", `✅ Success! TX: ${hash}`);
+      trackDisbursementSuccess(rid, amt, hash);
       setTxResult({ success: true, hash, recipientId: rid, amount: amt });
 
       // Clear form and refresh stats
@@ -161,6 +170,7 @@ export default function App() {
       loadStats();
     } catch (err) {
       const msg = applyContractError(err);
+      trackDisbursementFailed(rid, msg);
       setTxResult({ success: false, error: formatRpcError(err) });
       logAction("Disburse", `❌ Failed: ${msg}`);
     } finally {
@@ -205,6 +215,7 @@ export default function App() {
       }
 
       setLookupResult(record);
+      trackRecordLookup(lid, true);
       logAction("Lookup", `Found: PWD #${record.recipient_id}, ${record.amount} XLM`);
     } catch (err) {
       const msg = applyContractError(err);
@@ -614,7 +625,7 @@ export default function App() {
           <a href="https://stellar.org" target="_blank" rel="noopener noreferrer">
             Stellar
           </a>{" "}
-          Testnet with Soroban &middot; Stellar Journey to Mastery — Level 3
+          Testnet with Soroban &middot; Stellar Journey to Mastery — Level 4
         </p>
       </footer>
     </>

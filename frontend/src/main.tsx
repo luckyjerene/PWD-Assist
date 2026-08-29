@@ -12,8 +12,12 @@ import { Buffer } from "buffer";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { initAnalytics } from "./analytics";
 import "./index.css";
 import "./ui.css";
+
+// Initialize Google Analytics 4
+initAnalytics();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
