@@ -28,6 +28,7 @@ import {
   trackDisbursementSuccess,
   trackDisbursementFailed,
   trackRecordLookup,
+  trackFeedbackSubmitted,
 } from "./analytics";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -76,6 +77,10 @@ export default function App() {
   const [lookupResult, setLookupResult] = useState<DisbursementRecord | null>(null);
   const [lookupError, setLookupError] = useState("");
   const [lookingUp, setLookingUp] = useState(false);
+
+  // Feedback form
+  const [feedbackRating, setFeedbackRating] = useState<number>(5);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
 
   // ── Load stats on mount / when wallet or contract changes ────────────────
   const loadStats = useCallback(async () => {
@@ -224,6 +229,14 @@ export default function App() {
     } finally {
       setLookingUp(false);
     }
+  };
+
+  // ── Feedback Handler ─────────────────────────────────────────────────────
+  const handleFeedback = (e: FormEvent) => {
+    e.preventDefault();
+    trackFeedbackSubmitted(feedbackRating);
+    setFeedbackSubmitted(true);
+    logAction("Feedback", `User submitted a rating of ${feedbackRating}/5.`);
   };
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -548,6 +561,46 @@ export default function App() {
                     This reads directly from the Soroban smart contract (free, no gas).
                   </p>
                 </div>
+              </div>
+            </div>
+
+            {/* ── Feedback Collection ─────────────────────────────── */}
+            <div className="glass-card" id="feedback-card" style={{ gridColumn: "1 / -1", animation: "fadeInUp 0.6s ease-out both" }}>
+              <div className="glass-card__header">
+                <h2 className="glass-card__title">
+                  <span className="glass-card__title-icon">📝</span>
+                  User Feedback
+                </h2>
+              </div>
+              <div className="glass-card__body">
+                {feedbackSubmitted ? (
+                  <div className="tx-result__card tx-result__card--success" style={{ textAlign: "center", padding: "var(--space-4)" }}>
+                    <span className="tx-result__icon">✅</span>
+                    <h3 className="tx-result__title tx-result__title--success">Thank you for your feedback!</h3>
+                    <p className="form-group__hint" style={{ marginTop: "var(--space-2)" }}>Your rating helps us improve the PWD Assist PH portal.</p>
+                  </div>
+                ) : (
+                  <form onSubmit={handleFeedback} style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+                    <div className="form-group">
+                      <label className="form-group__label">How would you rate your experience today? (1-5)</label>
+                      <div style={{ display: "flex", gap: "var(--space-4)", marginTop: "var(--space-2)" }}>
+                        {[1, 2, 3, 4, 5].map((rating) => (
+                          <label key={rating} style={{ display: "flex", alignItems: "center", gap: "var(--space-1)", cursor: "pointer" }}>
+                            <input
+                              type="radio"
+                              name="rating"
+                              value={rating}
+                              checked={feedbackRating === rating}
+                              onChange={() => setFeedbackRating(rating)}
+                            />
+                            {rating}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <button type="submit" className="btn btn--primary" style={{ alignSelf: "flex-start" }}>Submit Feedback</button>
+                  </form>
+                )}
               </div>
             </div>
           </div>
