@@ -252,7 +252,9 @@ export default function App() {
           <div className="header__brand">
             <span className="header__logo">🏛️</span>
             <div>
-              <div className="header__title">PWD Assist PH</div>
+              <div className="header__title" style={{ fontStyle: "italic", fontWeight: 900 }}>
+                PWD <span style={{ color: "var(--color-info)" }}>ASSIST</span>
+              </div>
               <div className="header__subtitle">Soroban Disbursement Portal</div>
             </div>
           </div>
@@ -319,7 +321,7 @@ export default function App() {
             <div className="hero__badge">⚡ Powered by Soroban Smart Contracts</div>
             <div className="hero__icon">🏛️</div>
             <h1 className="hero__title">
-              Government PWD Assistance Disbursement Portal
+              PWD <span style={{ color: "var(--color-info)" }}>ASSIST</span> PROTOCOL
             </h1>
             <p className="hero__description">
               Empowering Filipino Persons with Disabilities through on-chain government
