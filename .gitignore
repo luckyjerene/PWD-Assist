@@ -31,3 +31,4 @@ target/
 
 # Environment
 frontend/.env
+.vercel
