@@ -1,162 +1,114 @@
-/**
- * App.tsx — PWD Assist PH Main Application Component
- *
- * MVP UI wired to the pwd_assist Soroban contract.
- * Implements the full Soroban IDE integration pattern:
- *
- * On load:
- *   → simulate("get_stats") to display dashboard totals
- *
- * Primary MVP buttons:
- *   [Disburse Assistance] → contract.disburse(agent, recipient_id, amount)
- *   [Look Up Record]      → simulate("get_record", recipient_id)
- *
- * Status states: idle | loading | error | ok | setup
- *
- * DEPLOY_HINT constant matches the contract path for IDE users.
- */
-
-import { useState, useEffect, useCallback, FormEvent } from "react";
+import React, { useState, useEffect, useCallback, MouseEvent, FormEvent } from "react";
 import { useWallet, signTransactionXdr } from "./wallet";
 import { useContractId } from "./contractRuntime";
 import { simulate, invokeWrite, formatRpcError, DEPLOY_HINT } from "./sorobanClient";
-import { logAction, ensureConnected, applyContractError } from "./previewActions";
-import {
-  trackWalletConnected,
-  trackWalletDisconnected,
-  trackDisbursementSubmitted,
-  trackDisbursementSuccess,
-  trackDisbursementFailed,
-  trackRecordLookup,
-  trackFeedbackSubmitted,
-} from "./analytics";
 
-// ── Types ──────────────────────────────────────────────────────────────────────
+// ── Types ────────────────────────────────────────────────────────
+type Role = "beneficiary" | "agent";
+type Tab = "vault" | "services" | "history";
+type DisburseState = "AVAILABLE" | "DISBURSED" | "IN_ESCROW" | "UNKNOWN" | "LOADING";
 
-type AppStatus = "idle" | "loading" | "error" | "ok" | "setup";
-
-interface Stats {
-  total_disbursed: number;
-  total_recipients: number;
+interface Provider {
+  id: string;
+  name: string;
+  service: string;
+  cost: number;
 }
 
-interface DisbursementRecord {
-  recipient_id: number;
-  amount: number;
-  timestamp: number;
-  agent: string;
-}
+const MOCK_PROVIDERS: Provider[] = [
+  { id: "P-101", name: "PhilHealth Connect", service: "Medical Premium", cost: 50 },
+  { id: "P-102", name: "Grab Accessibility", service: "Transport Voucher", cost: 25 },
+];
 
-interface TxResult {
-  success: boolean;
-  hash?: string;
-  error?: string;
-  recipientId?: number;
-  amount?: number;
-}
+const MOCK_HISTORY = [
+  { date: "2026-08-30", type: "Idempotent Lock", hash: "4f8a...9c21", status: "Success" },
+  { date: "2026-08-28", type: "Agent Auth", hash: "1d2b...5e78", status: "Success" },
+];
 
-// ── Main App Component ─────────────────────────────────────────────────────────
-
+// ── App Component ────────────────────────────────────────────────
 export default function App() {
   const wallet = useWallet();
   const contractId = useContractId();
 
-  // Dashboard stats
-  const [stats, setStats] = useState<Stats>({ total_disbursed: 0, total_recipients: 0 });
-  const [status, setStatus] = useState<AppStatus>("idle");
-  const [statusMessage, setStatusMessage] = useState("");
-
-  // Disburse form
+  // State
+  const [role, setRole] = useState<Role>("beneficiary");
+  const [activeTab, setActiveTab] = useState<Tab>("vault");
   const [recipientId, setRecipientId] = useState("");
-  const [amount, setAmount] = useState("");
-  const [disbursing, setDisbursing] = useState(false);
-  const [txResult, setTxResult] = useState<TxResult | null>(null);
+  const [revealed, setRevealed] = useState(false);
+  const [vaultState, setVaultState] = useState<DisburseState>("UNKNOWN");
+  const [loadingState, setLoadingState] = useState(false);
+  
+  const [agentAmount, setAgentAmount] = useState("");
+  const [processingTx, setProcessingTx] = useState(false);
+  const [toasts, setToasts] = useState<{ id: number; msg: string; hash?: string }[]>([]);
 
-  // Lookup form
-  const [lookupId, setLookupId] = useState("");
-  const [lookupResult, setLookupResult] = useState<DisbursementRecord | null>(null);
-  const [lookupError, setLookupError] = useState("");
-  const [lookingUp, setLookingUp] = useState(false);
+  // Telemetry (mock for GA4)
+  const track = (event: string, data: any) => console.log(`[GA4] ${event}`, data);
 
-  // Feedback form
-  const [feedbackRating, setFeedbackRating] = useState<number>(5);
-  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  // Ripple Effect Generator
+  const createRipple = (e: MouseEvent<HTMLButtonElement>) => {
+    const btn = e.currentTarget;
+    const circle = document.createElement("span");
+    const diameter = Math.max(btn.clientWidth, btn.clientHeight);
+    const radius = diameter / 2;
+    circle.style.width = circle.style.height = `${diameter}px`;
+    circle.style.left = `${e.clientX - btn.getBoundingClientRect().left - radius}px`;
+    circle.style.top = `${e.clientY - btn.getBoundingClientRect().top - radius}px`;
+    circle.classList.add("ripple");
+    const existing = btn.querySelector(".ripple");
+    if (existing) existing.remove();
+    btn.appendChild(circle);
+  };
 
-  // ── Load stats on mount / when wallet or contract changes ────────────────
-  const loadStats = useCallback(async () => {
-    if (!wallet.address || !contractId) {
-      if (!contractId) {
-        setStatus("setup");
-        setStatusMessage(DEPLOY_HINT);
-      }
-      return;
-    }
+  const showToast = (msg: string, hash?: string) => {
+    const id = Date.now();
+    setToasts((t) => [...t, { id, msg, hash }]);
+    setTimeout(() => {
+      setToasts((t) => t.filter((x) => x.id !== id));
+    }, 6000);
+  };
 
+  const checkState = async (id: number) => {
+    if (!wallet.address || !contractId) return;
+    setLoadingState(true);
     try {
-      logAction("Stats", "Loading disbursement statistics...");
-      const result = await simulate("get_stats", wallet.address, [], contractId);
-      // simulate returns a Map for struct values in SDK v15
-      if (result instanceof Map) {
-        setStats({
-          total_disbursed: Number(result.get("total_disbursed") ?? 0),
-          total_recipients: Number(result.get("total_recipients") ?? 0),
-        });
-      } else if (result && typeof result === "object") {
-        setStats({
-          total_disbursed: Number(result.total_disbursed ?? 0),
-          total_recipients: Number(result.total_recipients ?? 0),
-        });
-      }
-      setStatus("ok");
-      logAction("Stats", `Loaded: ${stats.total_recipients} recipients, ${stats.total_disbursed} XLM`);
-    } catch (err) {
-      const msg = applyContractError(err);
-      // Don't treat "no stats yet" as an error for fresh contracts
-      if (msg.includes("not found") || msg.includes("MissingValue")) {
-        setStats({ total_disbursed: 0, total_recipients: 0 });
-        setStatus("ok");
+      // simulate get_record
+      const result = await simulate("get_record", wallet.address, [id], contractId);
+      if (result) {
+        setVaultState("DISBURSED");
       } else {
-        setStatus("error");
-        setStatusMessage(msg);
+        setVaultState("AVAILABLE");
       }
+      track("state_checked", { id });
+    } catch (err: any) {
+      if (err.message?.includes("MissingValue") || err.message?.includes("not found")) {
+        setVaultState("AVAILABLE");
+      } else {
+        setVaultState("UNKNOWN");
+      }
+    } finally {
+      setLoadingState(false);
     }
-  }, [wallet.address, contractId]);
+  };
 
-  useEffect(() => {
-    loadStats();
-  }, [loadStats]);
+  const handleLookup = (e: FormEvent) => {
+    e.preventDefault();
+    const id = parseInt(recipientId);
+    if (!isNaN(id) && id > 0) {
+      checkState(id);
+    }
+  };
 
-  // ── Disburse Handler ─────────────────────────────────────────────────────
   const handleDisburse = async (e: FormEvent) => {
     e.preventDefault();
+    if (!wallet.address || !contractId) return;
+    
+    const rid = parseInt(recipientId);
+    const amt = parseInt(agentAmount);
+    if (isNaN(rid) || isNaN(amt)) return;
 
+    setProcessingTx(true);
     try {
-      ensureConnected(wallet.address);
-    } catch (err) {
-      setTxResult({ success: false, error: applyContractError(err) });
-      return;
-    }
-
-    const rid = parseInt(recipientId, 10);
-    const amt = parseInt(amount, 10);
-
-    if (isNaN(rid) || rid <= 0) {
-      setTxResult({ success: false, error: "Recipient ID must be a positive number." });
-      return;
-    }
-    if (isNaN(amt) || amt <= 0) {
-      setTxResult({ success: false, error: "Amount must be a positive number." });
-      return;
-    }
-
-    setDisbursing(true);
-    setTxResult(null);
-
-    try {
-      logAction("Disburse", `Sending ${amt} XLM to PWD #${rid}...`);
-
-      // invokeWrite: disburse(agent, recipient_id, amount)
-      // agent = wallet.address (the disbursing agent)
       const hash = await invokeWrite(
         "disburse",
         wallet.address,
@@ -164,525 +116,263 @@ export default function App() {
         [wallet.address, rid, amt],
         contractId
       );
-
-      logAction("Disburse", `✅ Success! TX: ${hash}`);
-      trackDisbursementSuccess(rid, amt, hash);
-      setTxResult({ success: true, hash, recipientId: rid, amount: amt });
-
-      // Clear form and refresh stats
-      setRecipientId("");
-      setAmount("");
-      loadStats();
-    } catch (err) {
-      const msg = applyContractError(err);
-      trackDisbursementFailed(rid, msg);
-      setTxResult({ success: false, error: formatRpcError(err) });
-      logAction("Disburse", `❌ Failed: ${msg}`);
+      showToast("⛓️ Ledger Confirmed: Disbursement Locked", hash);
+      track("disburse_success", { rid, amt, hash });
+      checkState(rid);
+    } catch (err: any) {
+      showToast(`❌ Tx Failed: ${formatRpcError(err)}`);
     } finally {
-      setDisbursing(false);
+      setProcessingTx(false);
     }
   };
 
-  // ── Lookup Handler ───────────────────────────────────────────────────────
-  const handleLookup = async (e: FormEvent) => {
+  const copyHash = (hash: string, e: MouseEvent) => {
     e.preventDefault();
-    setLookupError("");
-    setLookupResult(null);
-
-    if (!wallet.address) {
-      setLookupError("Connect your wallet first.");
-      return;
-    }
-
-    const lid = parseInt(lookupId, 10);
-    if (isNaN(lid) || lid <= 0) {
-      setLookupError("Enter a valid recipient ID number.");
-      return;
-    }
-
-    setLookingUp(true);
-
-    try {
-      logAction("Lookup", `Searching for PWD #${lid}...`);
-
-      const result = await simulate("get_record", wallet.address, [lid], contractId);
-
-      let record: DisbursementRecord;
-      if (result instanceof Map) {
-        record = {
-          recipient_id: Number(result.get("recipient_id") ?? 0),
-          amount: Number(result.get("amount") ?? 0),
-          timestamp: Number(result.get("timestamp") ?? 0),
-          agent: String(result.get("agent") ?? ""),
-        };
-      } else {
-        record = result as DisbursementRecord;
-      }
-
-      setLookupResult(record);
-      trackRecordLookup(lid, true);
-      logAction("Lookup", `Found: PWD #${record.recipient_id}, ${record.amount} XLM`);
-    } catch (err) {
-      const msg = applyContractError(err);
-      setLookupError(formatRpcError(err));
-      logAction("Lookup", `❌ ${msg}`);
-    } finally {
-      setLookingUp(false);
-    }
+    navigator.clipboard.writeText(hash);
+    const target = e.currentTarget as HTMLElement;
+    const old = target.innerText;
+    target.innerText = "✅ Copied!";
+    setTimeout(() => (target.innerText = old), 2000);
   };
-
-  // ── Feedback Handler ─────────────────────────────────────────────────────
-  const handleFeedback = (e: FormEvent) => {
-    e.preventDefault();
-    trackFeedbackSubmitted(feedbackRating);
-    setFeedbackSubmitted(true);
-    logAction("Feedback", `User submitted a rating of ${feedbackRating}/5.`);
-  };
-
-  // ── Render ───────────────────────────────────────────────────────────────
-
-  const truncateAddress = (addr: string) =>
-    `${addr.slice(0, 4)}...${addr.slice(-4)}`;
 
   return (
     <>
-      {/* ── Header ──────────────────────────────────────────────────── */}
-      <header className="header" id="main-header">
-        <div className="header__inner">
-          <div className="header__brand">
-            <span className="header__logo">🏛️</span>
-            <div>
-              <div className="header__title" style={{ fontStyle: "italic", fontWeight: 900 }}>
-                PWD <span style={{ color: "var(--color-info)" }}>ASSIST</span>
-              </div>
-              <div className="header__subtitle">Soroban Disbursement Portal</div>
-            </div>
+      <header className="app-header">
+        <div className="brand">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          </svg>
+          <h1 className="brand-title">PWD Assist Protocol</h1>
+          <div className="network-badge" aria-label="Connected to Stellar Testnet">
+            <div className="status-dot"></div>
+            🧪 STELLAR TESTNET
           </div>
-
-          <div className="header__actions">
-            <div className="header__network-badge" id="network-badge">
-              <span className="header__network-dot"></span>
-              Stellar Testnet
-            </div>
-
-            {wallet.address ? (
-              <>
-                <div className="header__address" id="wallet-address-display">
-                  <span>👤</span>
-                  {truncateAddress(wallet.address)}
-                </div>
-                <button
-                  className="btn btn--danger"
-                  onClick={wallet.disconnect}
-                  id="disconnect-wallet-btn"
-                >
-                  Disconnect
-                </button>
-              </>
-            ) : (
-              <button
-                className="btn btn--primary"
-                onClick={wallet.connect}
-                disabled={wallet.connecting}
-                id="connect-wallet-btn"
-              >
-                {wallet.connecting ? (
-                  <>
-                    <span className="btn__spinner"></span>
-                    Connecting...
-                  </>
-                ) : (
-                  "🔗 Connect Wallet"
-                )}
-              </button>
-            )}
-          </div>
+        </div>
+        
+        <div className="role-switcher" role="group" aria-label="Role Switcher">
+          <button 
+            className="role-btn" 
+            aria-pressed={role === "beneficiary"}
+            onClick={() => setRole("beneficiary")}
+          >Beneficiary</button>
+          <button 
+            className="role-btn" 
+            aria-pressed={role === "agent"}
+            onClick={() => setRole("agent")}
+          >DSWD Agent</button>
         </div>
       </header>
 
-      {/* ── Status Banners ──────────────────────────────────────────── */}
-      {status === "setup" && (
-        <div className="status-banner status-banner--setup" id="setup-banner">
-          ⚠️ {statusMessage}
-        </div>
-      )}
-
-      {wallet.error && (
-        <div className="status-banner status-banner--error">
-          ⚠️ {wallet.error}
-        </div>
-      )}
-
-      {/* ── Main Content ────────────────────────────────────────────── */}
-      {!wallet.address ? (
-        /* ── Landing Hero (disconnected) ─────────────────────────── */
-        <section className="hero" id="landing-hero">
-          <div className="hero__content">
-            <div className="hero__badge">⚡ Powered by Soroban Smart Contracts</div>
-            <div className="hero__icon">🏛️</div>
-            <h1 className="hero__title">
-              PWD <span style={{ color: "var(--color-info)" }}>ASSIST</span> PROTOCOL
-            </h1>
-            <p className="hero__description">
-              Empowering Filipino Persons with Disabilities through on-chain government
-              cash assistance. Every disbursement is recorded immutably on the Stellar
-              blockchain — no ghost beneficiaries, no political interference, no queues.
-            </p>
-            <button
-              className="btn btn--primary btn--lg"
-              onClick={wallet.connect}
-              disabled={wallet.connecting}
-              id="hero-connect-btn"
-            >
-              {wallet.connecting ? (
-                <>
-                  <span className="btn__spinner"></span>
-                  Connecting Wallet...
-                </>
-              ) : (
-                "🔗 Connect Freighter Wallet to Start"
-              )}
-            </button>
-
-            <div className="hero__features">
-              <div className="hero__feature">
-                <div className="hero__feature-icon">📜</div>
-                <div className="hero__feature-title">On-Chain Ledger</div>
-                <div className="hero__feature-desc">
-                  Every disbursement is recorded on-chain via Soroban smart contract — immutable and auditable.
-                </div>
-              </div>
-              <div className="hero__feature">
-                <div className="hero__feature-icon">🔒</div>
-                <div className="hero__feature-title">Agent Authorization</div>
-                <div className="hero__feature-desc">
-                  Only authorized DSWD agents can disburse funds, enforced by require_auth().
-                </div>
-              </div>
-              <div className="hero__feature">
-                <div className="hero__feature-icon">♿</div>
-                <div className="hero__feature-title">PWD-First Design</div>
-                <div className="hero__feature-desc">
-                  Eliminates the need for PWDs in Quezon City to travel to DSWD field offices.
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      ) : (
-        /* ── Dashboard (connected) ───────────────────────────────── */
-        <main className="dashboard" id="dashboard">
-          {/* ── Stats Cards ────────────────────────────────────────── */}
-          <div className="dashboard__stats" id="stats-section">
-            <div className="stat-card">
-              <div className="stat-card__value" id="stat-total-disbursed">
-                {stats.total_disbursed.toLocaleString()}
-                <span>XLM</span>
-              </div>
-              <div className="stat-card__label">Total Disbursed</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-card__value" id="stat-total-recipients">
-                {stats.total_recipients.toLocaleString()}
-              </div>
-              <div className="stat-card__label">Recipients Served</div>
-            </div>
+      <main className="main-container">
+        {/* LEFT COLUMN */}
+        <div>
+          <div className="tabs" role="tablist">
+            <button className="tab-btn" aria-selected={activeTab === "vault"} onClick={() => setActiveTab("vault")} role="tab">Vault Dashboard</button>
+            <button className="tab-btn" aria-selected={activeTab === "services"} onClick={() => setActiveTab("services")} role="tab">Escrow Services</button>
+            <button className="tab-btn" aria-selected={activeTab === "history"} onClick={() => setActiveTab("history")} role="tab">Audit History</button>
           </div>
 
-          {/* ── Two-Column Grid ────────────────────────────────────── */}
-          <div className="dashboard__grid">
-            {/* ── Left: Disburse Form ──────────────────────────────── */}
-            <div className="glass-card" id="disburse-card" style={{ animation: "fadeInUp 0.5s ease-out" }}>
-              <div className="glass-card__header">
-                <h2 className="glass-card__title">
-                  <span className="glass-card__title-icon">📤</span>
-                  Disburse Assistance
-                </h2>
+          {activeTab === "vault" && (
+            <div className="card" role="tabpanel">
+              <div className="card-header">
+                <h2 className="card-title">State Verification</h2>
               </div>
-              <div className="glass-card__body">
-                <form className="send-form" onSubmit={handleDisburse}>
-                  <div className="form-group">
-                    <label className="form-group__label" htmlFor="recipient-id-input">
-                      <span className="form-group__label-icon">♿</span>
-                      PWD Recipient ID
-                    </label>
-                    <input
-                      id="recipient-id-input"
-                      type="number"
-                      className="form-group__input"
-                      placeholder="e.g. 1001 (PWD ID number)"
+              
+              <form onSubmit={handleLookup} className="form-group">
+                <label className="form-label" htmlFor="pwd-id">Beneficiary ID (Numeric)</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <div style={{ position: 'relative', flex: 1 }}>
+                    <input 
+                      id="pwd-id"
+                      type={revealed ? "number" : "password"}
+                      className="form-input" 
                       value={recipientId}
-                      onChange={(e) => setRecipientId(e.target.value)}
-                      disabled={disbursing}
-                      min="1"
+                      onChange={e => setRecipientId(e.target.value)}
+                      placeholder="e.g. 1042"
+                      required
+                      aria-required="true"
                     />
-                    <span className="form-group__hint">
-                      Enter the PWD beneficiary&apos;s unique ID number
-                    </span>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-group__label" htmlFor="amount-input">
-                      <span className="form-group__label-icon">💰</span>
-                      Amount (XLM demo units)
-                    </label>
-                    <input
-                      id="amount-input"
-                      type="number"
-                      className="form-group__input"
-                      placeholder="e.g. 100"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      disabled={disbursing}
-                      min="1"
-                    />
-                    <span className="form-group__hint">
-                      Demo units — production would use USDC or PHP stablecoin
-                    </span>
-                  </div>
-
-                  {/* Transaction Summary */}
-                  {recipientId && amount && parseInt(amount) > 0 && (
-                    <div className="send-form__summary" id="tx-summary">
-                      <div className="send-form__summary-row">
-                        <span className="send-form__summary-label">Recipient</span>
-                        <span className="send-form__summary-value">PWD #{recipientId}</span>
-                      </div>
-                      <div className="send-form__summary-row">
-                        <span className="send-form__summary-label">Amount</span>
-                        <span className="send-form__summary-value">{amount} XLM</span>
-                      </div>
-                      <div className="send-form__summary-row">
-                        <span className="send-form__summary-label">Memo</span>
-                        <span className="send-form__summary-value">PWD-ASSIST</span>
-                      </div>
-                      <div className="send-form__summary-row">
-                        <span className="send-form__summary-label">Contract</span>
-                        <span className="send-form__summary-value" style={{ fontFamily: "'Courier New', monospace", fontSize: "0.7rem" }}>
-                          {contractId ? `${contractId.slice(0, 8)}…${contractId.slice(-4)}` : "Not set"}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="send-form__submit">
-                    <button
-                      type="submit"
-                      className="btn btn--success btn--lg"
-                      disabled={disbursing || !recipientId || !amount}
-                      id="disburse-btn"
+                    <button 
+                      type="button" 
+                      onClick={() => setRevealed(!revealed)}
+                      aria-label={revealed ? "Hide ID" : "Reveal ID"}
+                      style={{ position: 'absolute', right: '12px', top: '12px', background: 'none', border: 'none', cursor: 'pointer' }}
                     >
-                      {disbursing ? (
-                        <>
-                          <span className="btn__spinner"></span>
-                          Processing Disbursement...
-                        </>
-                      ) : (
-                        "🚀 Disburse Assistance"
-                      )}
+                      {revealed ? "👁️‍🗨️" : "👁️"}
                     </button>
                   </div>
-                </form>
-              </div>
-            </div>
-
-            {/* ── Right: Lookup Record ─────────────────────────────── */}
-            <div className="glass-card lookup" id="lookup-card">
-              <div className="glass-card__header">
-                <h2 className="glass-card__title">
-                  <span className="glass-card__title-icon">🔍</span>
-                  Look Up Disbursement
-                </h2>
-              </div>
-              <div className="glass-card__body">
-                <form className="lookup__form" onSubmit={handleLookup}>
-                  <div className="form-group">
-                    <input
-                      id="lookup-id-input"
-                      type="number"
-                      className="form-group__input"
-                      placeholder="PWD ID #"
-                      value={lookupId}
-                      onChange={(e) => setLookupId(e.target.value)}
-                      disabled={lookingUp}
-                      min="1"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    className="btn btn--primary"
-                    disabled={lookingUp || !lookupId}
-                    id="lookup-btn"
-                  >
-                    {lookingUp ? (
-                      <span className="btn__spinner"></span>
-                    ) : (
-                      "🔍 Search"
-                    )}
+                  <button type="submit" className="btn btn-primary" onClick={createRipple}>
+                    Query State
                   </button>
-                </form>
-
-                {lookupError && (
-                  <div className="tx-result__error-msg" style={{ marginBottom: "var(--space-4)" }}>
-                    {lookupError}
-                  </div>
-                )}
-
-                {lookupResult && (
-                  <div className="lookup__result" id="lookup-result">
-                    <div className="lookup__result-row">
-                      <span className="lookup__result-label">Recipient ID</span>
-                      <span className="lookup__result-value">PWD #{lookupResult.recipient_id}</span>
-                    </div>
-                    <div className="lookup__result-row">
-                      <span className="lookup__result-label">Amount</span>
-                      <span className="lookup__result-value">{lookupResult.amount} XLM</span>
-                    </div>
-                    <div className="lookup__result-row">
-                      <span className="lookup__result-label">Timestamp</span>
-                      <span className="lookup__result-value">
-                        {lookupResult.timestamp > 0
-                          ? new Date(lookupResult.timestamp * 1000).toLocaleString()
-                          : "Ledger timestamp"}
-                      </span>
-                    </div>
-                    <div className="lookup__result-row">
-                      <span className="lookup__result-label">Agent</span>
-                      <span className="lookup__result-value" style={{ fontFamily: "'Courier New', monospace", fontSize: "0.7rem" }}>
-                        {typeof lookupResult.agent === "string" && lookupResult.agent.length > 10
-                          ? `${lookupResult.agent.slice(0, 8)}…${lookupResult.agent.slice(-4)}`
-                          : String(lookupResult.agent)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                <div style={{ marginTop: "var(--space-6)" }}>
-                  <p className="form-group__hint">
-                    Enter a PWD recipient ID to verify their disbursement record on-chain.
-                    This reads directly from the Soroban smart contract (free, no gas).
-                  </p>
                 </div>
-              </div>
-            </div>
+              </form>
 
-            {/* ── Feedback Collection ─────────────────────────────── */}
-            <div className="glass-card" id="feedback-card" style={{ gridColumn: "1 / -1", animation: "fadeInUp 0.6s ease-out both" }}>
-              <div className="glass-card__header">
-                <h2 className="glass-card__title">
-                  <span className="glass-card__title-icon">📝</span>
-                  User Feedback
-                </h2>
-              </div>
-              <div className="glass-card__body">
-                {feedbackSubmitted ? (
-                  <div className="tx-result__card tx-result__card--success" style={{ textAlign: "center", padding: "var(--space-4)" }}>
-                    <span className="tx-result__icon">✅</span>
-                    <h3 className="tx-result__title tx-result__title--success">Thank you for your feedback!</h3>
-                    <p className="form-group__hint" style={{ marginTop: "var(--space-2)" }}>Your rating helps us improve the PWD Assist PH portal.</p>
+              {loadingState ? (
+                <div className="skeleton" style={{ height: '100px', width: '100%', marginTop: '24px' }} aria-busy="true" aria-label="Loading ledger state"></div>
+              ) : (
+                vaultState !== "UNKNOWN" && (
+                  <div className={`state-banner ${vaultState.toLowerCase()}`} role="alert" aria-live="polite">
+                    <div className="state-icon">
+                      {vaultState === "AVAILABLE" ? "🔓" : vaultState === "DISBURSED" ? "🔒" : "⏳"}
+                    </div>
+                    <div className="state-info">
+                      <h2>{vaultState}</h2>
+                      <p>
+                        {vaultState === "AVAILABLE" && "Tokens are ready to be claimed or locked."}
+                        {vaultState === "DISBURSED" && "Idempotent lock active. Funds already disbursed."}
+                        {vaultState === "IN_ESCROW" && "Tokens locked for service provider fulfillment."}
+                      </p>
+                    </div>
                   </div>
-                ) : (
-                  <form onSubmit={handleFeedback} style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+                )
+              )}
+
+              {/* AGENT MODE ADMIN PANEL */}
+              {role === "agent" && vaultState === "AVAILABLE" && (
+                <div style={{ marginTop: '32px', borderTop: '2px solid #E5E7EB', paddingTop: '24px' }}>
+                  <h3 style={{ marginBottom: '16px', color: 'var(--gov-blue)' }}>🔐 Authorized Agent Action</h3>
+                  <form onSubmit={handleDisburse}>
                     <div className="form-group">
-                      <label className="form-group__label">How would you rate your experience today? (1-5)</label>
-                      <div style={{ display: "flex", gap: "var(--space-4)", marginTop: "var(--space-2)" }}>
-                        {[1, 2, 3, 4, 5].map((rating) => (
-                          <label key={rating} style={{ display: "flex", alignItems: "center", gap: "var(--space-1)", cursor: "pointer" }}>
-                            <input
-                              type="radio"
-                              name="rating"
-                              value={rating}
-                              checked={feedbackRating === rating}
-                              onChange={() => setFeedbackRating(rating)}
-                            />
-                            {rating}
-                          </label>
-                        ))}
-                      </div>
+                      <label className="form-label" htmlFor="agent-amount">Disbursement Amount (XLM)</label>
+                      <input 
+                        id="agent-amount"
+                        type="number"
+                        className="form-input"
+                        value={agentAmount}
+                        onChange={e => setAgentAmount(e.target.value)}
+                        required
+                      />
                     </div>
-                    <button type="submit" className="btn btn--primary" style={{ alignSelf: "flex-start" }}>Submit Feedback</button>
+                    <button 
+                      type="submit" 
+                      className="btn btn-secondary" 
+                      style={{ width: '100%' }}
+                      disabled={processingTx || !wallet.address}
+                      onClick={createRipple}
+                    >
+                      {processingTx ? "Executing require_auth()..." : "Trigger Disbursement"}
+                    </button>
                   </form>
-                )}
-              </div>
+                </div>
+              )}
             </div>
-          </div>
+          )}
 
-          {/* ── Transaction Result ──────────────────────────────────── */}
-          {txResult && (
-            <div className="tx-result" id="transaction-result">
-              <div className={`tx-result__card tx-result__card--${txResult.success ? "success" : "error"}`}>
-                <div className="tx-result__header">
-                  <span className="tx-result__icon">
-                    {txResult.success ? "✅" : "❌"}
-                  </span>
-                  <span className={`tx-result__title tx-result__title--${txResult.success ? "success" : "error"}`}>
-                    {txResult.success ? "Assistance Disbursed Successfully!" : "Disbursement Failed"}
-                  </span>
-                </div>
-
-                <div className="tx-result__details">
-                  {txResult.success ? (
-                    <>
-                      {txResult.recipientId && (
-                        <div className="tx-result__row">
-                          <span className="tx-result__row-label">Recipient</span>
-                          <span className="tx-result__row-value">PWD #{txResult.recipientId}</span>
-                        </div>
-                      )}
-                      {txResult.amount && (
-                        <div className="tx-result__row">
-                          <span className="tx-result__row-label">Amount</span>
-                          <span className="tx-result__row-value">{txResult.amount} XLM</span>
-                        </div>
-                      )}
-                      {txResult.hash && (
-                        <div className="tx-result__row">
-                          <span className="tx-result__row-label">Transaction Hash</span>
-                          <a
-                            href={`https://stellar.expert/explorer/testnet/tx/${txResult.hash}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="tx-result__hash-link"
-                            id="tx-hash-link"
-                          >
-                            {txResult.hash}
-                            <span>↗</span>
-                          </a>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="tx-result__error-msg">
-                      {txResult.error || "An unknown error occurred."}
+          {activeTab === "services" && (
+            <div className="card" role="tabpanel">
+              <div className="card-header">
+                <h2 className="card-title">Escrow Marketplace Subgraph</h2>
+              </div>
+              <p style={{ marginBottom: '16px', color: 'var(--text-muted)' }}>Select a registered provider to cryptographically lock tokens for their service.</p>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {MOCK_PROVIDERS.map(p => (
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', border: '1px solid #E5E7EB', borderRadius: '8px' }}>
+                    <div>
+                      <h3 style={{ fontWeight: 600 }}>{p.name}</h3>
+                      <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{p.service}</div>
                     </div>
-                  )}
-                </div>
-
-                <div className="tx-result__dismiss">
-                  <button
-                    className="btn btn--ghost"
-                    onClick={() => setTxResult(null)}
-                    id="dismiss-result-btn"
-                  >
-                    {txResult.success ? "✨ Disburse Another" : "↩ Try Again"}
-                  </button>
-                </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                      <span className="mono" style={{ fontWeight: 700, color: 'var(--status-available)' }}>{p.cost} XLM</span>
+                      <button className="btn btn-ghost" onClick={createRipple}>Lock Tokens</button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
-        </main>
-      )}
 
-      {/* ── Footer ──────────────────────────────────────────────────── */}
-      <footer className="footer" id="app-footer">
-        <p className="footer__text">
-          🏛️ PWD Assist PH &middot; Built on{" "}
-          <a href="https://stellar.org" target="_blank" rel="noopener noreferrer">
-            Stellar
-          </a>{" "}
-          Testnet with Soroban &middot; Stellar Journey to Mastery — Level 4
-        </p>
-      </footer>
+          {activeTab === "history" && (
+            <div className="card" role="tabpanel">
+              <div className="card-header">
+                <h2 className="card-title">Simulation Audit Trail</h2>
+              </div>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Action</th>
+                    <th>Transaction Hash</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {MOCK_HISTORY.map((row, i) => (
+                    <tr key={i}>
+                      <td>{row.date}</td>
+                      <td>{row.type}</td>
+                      <td>
+                        <button className="chip" onClick={(e) => copyHash(row.hash, e)} aria-label="Copy Hash">
+                          {row.hash} 📋
+                        </button>
+                      </td>
+                      <td style={{ color: 'var(--status-available)', fontWeight: 600 }}>{row.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT COLUMN */}
+        <div>
+          <div className="card" style={{ marginBottom: '24px' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '16px' }}>🛡️ Threat Model Active</h3>
+            <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <li style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '0.875rem', fontWeight: 600 }}>
+                <span style={{ color: 'var(--status-available)' }}>✅</span> Replay Attack Protected
+              </li>
+              <li style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '0.875rem', fontWeight: 600 }}>
+                <span style={{ color: 'var(--status-available)' }}>✅</span> Idempotent State Active
+              </li>
+              <li style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '0.875rem', fontWeight: 600 }}>
+                <span style={{ color: 'var(--status-available)' }}>✅</span> require_auth() Enforced
+              </li>
+            </ul>
+          </div>
+
+          <div className="card">
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '16px' }}>Network Connection</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Wallet</div>
+                {wallet.address ? (
+                  <button className="chip" onClick={e => copyHash(wallet.address!, e)}>{wallet.address.slice(0, 8)}...{wallet.address.slice(-4)}</button>
+                ) : (
+                  <button className="btn btn-primary" onClick={() => { wallet.connect(); track("wallet_connect", {}); }} style={{ width: '100%' }}>Connect Wallet</button>
+                )}
+              </div>
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Contract ID</div>
+                <button className="chip" onClick={e => copyHash(contractId || "", e)}>{contractId ? `${contractId.slice(0, 8)}...` : "Not Configured"}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <div className="toast-container" aria-live="assertive">
+        {toasts.map(t => (
+          <div key={t.id} className="toast">
+            <div style={{ fontSize: '1.25rem' }}>⛓️</div>
+            <div>
+              <div style={{ fontWeight: 600 }}>{t.msg}</div>
+              {t.hash && (
+                <a 
+                  href={`https://stellar.expert/explorer/testnet/tx/${t.hash}`} 
+                  target="_blank" 
+                  rel="noreferrer"
+                  className="toast-hash"
+                  aria-label="View on Stellar Explorer"
+                >
+                  {t.hash} ↗
+                </a>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </>
   );
 }
